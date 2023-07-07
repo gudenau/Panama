@@ -1,0 +1,107 @@
+import java.util.stream.Collectors
+import java.util.stream.IntStream
+
+plugins {
+    id 'java'
+}
+
+// Panama previews started on Java 14, but you couldn't call native functions until 16
+def supportedVersions = IntStream.rangeClosed(16, 20)
+    .mapToObj(Integer::valueOf)
+    .toList()
+
+// A few version specific flags
+def compilerArgs = Map.of(
+    19, List.of('--enable-preview'),
+    20, List.of('--enable-preview')
+)
+
+// The base set of classes should target the minimum Java version
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(supportedVersions.get(0))
+    }
+
+    modularity.inferModulePath = true
+}
+
+// This entire project heavily depends on multi release jars, enable them
+jar {
+    manifest {
+        attributes('Multi-Release': 'True')
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.ow2.asm:asm:9.5'
+}
+
+// Define every supported source set and its related state
+def sourceSetList = new ArrayList<>(List.of(sourceSets.main.output))
+for(def version : supportedVersions) {
+    def sourceSet = sourceSets.create("java${version}") {
+        java {
+            srcDirs = ["src/main/java${version}"]
+        }
+    }
+    sourceSet.compileClasspath += sourceSets.main.compileClasspath
+    sourceSet.runtimeClasspath += sourceSets.main.runtimeClasspath
+    sourceSet.annotationProcessorPath += sourceSets.main.annotationProcessorPath
+
+    // Make sure each source set can see the "older" ones to mimic MRJs
+    var dependentSourceSet = List.copyOf(sourceSetList)
+    def mainClasses = objects.fileCollection().from(dependentSourceSet)
+    dependencies."java${version}Implementation"(mainClasses)
+    sourceSetList.add(sourceSet.output)
+
+    // Setup the correct javac version
+    var compiler = javaToolchains.compilerFor {
+        languageVersion = JavaLanguageVersion.of(version)
+    }
+    var versionArgs = compilerArgs.getOrDefault(version, List.of())
+    tasks.named("compileJava${version}Java", JavaCompile) {
+        javaCompiler = compiler
+
+        options.compilerArgs += [
+            // This is required for "split" modules like this
+            '--patch-module', 'net.gudenau.panama=' + dependentSourceSet.stream()
+                .flatMap((set) -> set.classesDirs.files.stream())
+                .map(File::toString)
+                .collect(Collectors.joining(File.pathSeparator))
+        ]
+        options.compilerArgs += versionArgs
+    }
+
+    // Make sure the classes end up in the correct locations
+    tasks.named('jar', Jar) {
+        it.into("META-INF/versions/${version}") {
+            it.from sourceSet.output
+        }
+    }
+
+    // Create run task
+    def launcher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(version)
+    }
+    tasks.register("run${version}", JavaExec) {
+        dependsOn jar
+        classpath = files(jar.archivePath, sourceSets.main.runtimeClasspath) - sourceSets.main.output
+        modularity.inferModulePath = true
+        javaLauncher = launcher
+        mainModule = 'net.gudenau.panama'
+        mainClass = 'net.gudenau.panama.internal.Test'
+        jvmArgs += [
+            '--enable-preview'
+        ]
+    }
+}
+
+tasks.register('run') {
+    supportedVersions.forEach { version ->
+        dependsOn "run${version}"
+    }
+}
