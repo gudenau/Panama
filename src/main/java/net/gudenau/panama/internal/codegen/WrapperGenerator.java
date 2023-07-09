@@ -145,6 +145,7 @@ public final class WrapperGenerator {
 
         var code = generator.toByteArray();
 
+        /*
         try {
             var path = Path.of("dump", Integer.toString(Runtime.version().feature()), Generated.getClassName() + ".class");
             var parent = path.getParent();
@@ -155,6 +156,7 @@ public final class WrapperGenerator {
                 stream.write(code);
             }
         }catch (IOException ignored) {}
+         */
 
         return code;
     }
