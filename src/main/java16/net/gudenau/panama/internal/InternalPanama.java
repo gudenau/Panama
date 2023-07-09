@@ -1,6 +1,7 @@
 package net.gudenau.panama.internal;
 
 import net.gudenau.panama.Binder;
+import net.gudenau.panama.PanamaArena;
 import net.gudenau.panama.PanamaSegment;
 import net.gudenau.panama.PanamaType;
 
@@ -28,5 +29,9 @@ public final class InternalPanama {
 
     public static PanamaSegment getNullSegment() {
         return InternalSegment.NULL;
+    }
+
+    public static PanamaArena openArena(boolean shared) {
+        return new InternalArena(shared);
     }
 }

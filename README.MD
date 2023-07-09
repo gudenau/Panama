@@ -12,6 +12,13 @@ artifacts are required).
 
 ---
 
+### Limitations
+
+Java 16:
+- Shared arenas are not supported
+
+---
+
 ### Missing features
 - Upcalls (I.E callbacks)
 - Memory sessions
